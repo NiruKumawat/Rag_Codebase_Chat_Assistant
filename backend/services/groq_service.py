@@ -1,26 +1,31 @@
 import logging
-
 from backend.core.settings import settings
 
-
 logger = logging.getLogger("rag_app.groq")
-
-GROQ_API_KEY = settings.groq_api_key
-MODEL_NAME = settings.groq_model_name
 _client = None
+
+CANDIDATE_MODELS = [
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+    "llama3-8b-8192",
+]
 
 
 def get_groq_client():
     global _client
+    api_key = settings.groq_api_key.strip()
 
-    if _client is None:
-        if not GROQ_API_KEY:
-            raise ValueError("GROQ_API_KEY is not configured in .env")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY is not configured in .env")
 
+    if _client is None or getattr(_client, "_custom_api_key", None) != api_key:
         from groq import Groq
 
-        logger.info("Creating Groq client for model: %s", MODEL_NAME)
-        _client = Groq(api_key=GROQ_API_KEY)
+        logger.info("Creating Groq client...")
+        _client = Groq(api_key=api_key)
+        _client._custom_api_key = api_key
 
     return _client
 
@@ -62,10 +67,34 @@ def generate_answer(question: str, retrieved_chunks: list[dict[str, object]]) ->
     client = get_groq_client()
     messages = build_prompt(question, retrieved_chunks)
 
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        temperature=0.2,
-    )
+    # Models to try: configured model first, then known working candidate models
+    configured_model = settings.groq_model_name
+    models_to_try = [configured_model] + [m for m in CANDIDATE_MODELS if m != configured_model]
 
-    return response.choices[0].message.content or ""
+    last_exc = None
+    for model_name in models_to_try:
+        try:
+            logger.info("Sending request to Groq model: %s", model_name)
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=settings.groq_temperature,
+                top_p=settings.groq_top_p,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as exc:
+            err_msg = str(exc)
+            logger.warning("Groq model %s failed: %s", model_name, err_msg)
+            last_exc = exc
+            if "invalid_api_key" in err_msg.lower() or "401" in err_msg:
+                raise ValueError(
+                    "Invalid Groq API Key. Please get a free API key from https://console.groq.com/keys and update GROQ_API_KEY in your .env file."
+                ) from exc
+            if "model_not_found" in err_msg.lower() or "404" in err_msg:
+                continue
+            raise
+
+    if last_exc:
+        raise last_exc
+
+    return ""

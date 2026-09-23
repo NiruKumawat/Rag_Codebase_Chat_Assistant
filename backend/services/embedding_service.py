@@ -13,6 +13,7 @@ def get_embedding_model() -> Any:
     global _model
 
     if _model is None:
+        # pyrefly: ignore [missing-import]
         from sentence_transformers import SentenceTransformer
 
         logger.info("Loading embedding model: %s", MODEL_NAME)

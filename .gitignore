@@ -1,7 +1,12 @@
 .env
 .venv/
+backend/venv/
 __pycache__/
 *.pyc
 frontend/node_modules/
 frontend/dist/
 .DS_Store
+backend/logs/*.log
+backend/uploads/*.pdf
+backend/faiss_index/documents.index
+backend/faiss_index/chunk_metadata.json

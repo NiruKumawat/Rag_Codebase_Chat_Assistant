@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from functools import lru_cache
 import os
 from pathlib import Path
 
@@ -18,7 +17,7 @@ def _load_dotenv_file(dotenv_path: Path) -> None:
             continue
 
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip())
+        os.environ[key.strip()] = value.strip().strip("'\"")
 
 
 _load_dotenv_file(BASE_DIR / ".env")
@@ -39,12 +38,36 @@ def _resolve_path(name: str, default: str) -> Path:
     return candidate if candidate.is_absolute() else (BASE_DIR / candidate).resolve()
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
+    @property
+    def groq_api_key(self) -> str:
+        _load_dotenv_file(BASE_DIR / ".env")
+        return os.getenv("GROQ_API_KEY", "").strip().strip("'\"")
+
+    @property
+    def groq_model_name(self) -> str:
+        _load_dotenv_file(BASE_DIR / ".env")
+        return os.getenv("MODEL_NAME", "openai/gpt-oss-120b").strip().strip("'\"")
+
+    @property
+    def groq_temperature(self) -> float:
+        _load_dotenv_file(BASE_DIR / ".env")
+        try:
+            return float(os.getenv("TEMPERATURE", "0.2"))
+        except ValueError:
+            return 0.2
+
+    @property
+    def groq_top_p(self) -> float:
+        _load_dotenv_file(BASE_DIR / ".env")
+        try:
+            return float(os.getenv("TOP_P", "0.9"))
+        except ValueError:
+            return 0.9
+
     app_name: str = os.getenv("APP_NAME", "RAG Document Chatbot API")
     app_version: str = os.getenv("APP_VERSION", "0.1.0")
-    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
-    groq_model_name: str = os.getenv("MODEL_NAME", "llama-3.1-8b-instant")
     embedding_model_name: str = os.getenv(
         "EMBEDDING_MODEL",
         "sentence-transformers/all-MiniLM-L6-v2",
@@ -65,12 +88,7 @@ class Settings:
         return self.max_pdf_size_mb * 1024 * 1024
 
 
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    return Settings()
-
-
-settings = get_settings()
+settings = Settings()
 
 
 def ensure_directories() -> None:
